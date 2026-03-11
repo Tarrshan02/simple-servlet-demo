@@ -1,37 +1,100 @@
 pipeline {
     agent any
 
+    environment {
+        APP_NAME       = 'springjsp'
+        WAR_FILE       = 'target\\springjsp.war'
+        TOMCAT_WEBAPPS = 'C:\\Tomcat9\\webapps'
+    }
+
+    tools {
+        maven 'Maven3'
+        jdk   'JDK17'
+    }
+
     stages {
-        stage('Checkout Code') {
+
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Tarrshan02/simple-servlet-demo.git'
+                checkout scm
             }
         }
 
-        stage('Build WAR') {
+        stage('Code Info') {
             steps {
-                bat 'mvn clean package -DskipTests'
+                echo '========== Build Environment Info =========='
+                bat 'java -version'
+                bat 'mvnw.bat -version'
             }
         }
 
-        stage('Deploy WAR') {
+        stage('Clean') {
             steps {
-                bat '''
-                if exist "C:\\Tomcat10\\webapps\\simple-servlet-demo" rmdir /s /q "C:\\Tomcat10\\webapps\\simple-servlet-demo"
-                if exist "C:\\Tomcat10\\webapps\\simple-servlet-demo.war" del /f /q "C:\\Tomcat10\\webapps\\simple-servlet-demo.war"
-                copy /Y "target\\simple-servlet-demo.war" "C:\\Tomcat10\\webapps\\simple-servlet-demo.war"
-                '''
+                bat 'mvnw.bat clean'
             }
         }
 
-        stage('Restart Tomcat') {
+        stage('Build') {
             steps {
-                bat '''
-                net stop Tomcat10
-                timeout /t 5 /nobreak
-                net start Tomcat10
-                '''
+                bat 'mvnw.bat compile'
             }
+        }
+
+        stage('Test') {
+            steps {
+                bat 'mvnw.bat test'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                bat 'mvnw.bat package -DskipTests'
+                bat 'dir target\\*.war'
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/*.war',
+                                     fingerprint: true
+                }
+            }
+        }
+
+        stage('Deploy to Tomcat') {
+            steps {
+                bat """
+                    if exist "${TOMCAT_WEBAPPS}\\${APP_NAME}" (
+                        rmdir /s /q "${TOMCAT_WEBAPPS}\\${APP_NAME}"
+                    )
+                    if exist "${TOMCAT_WEBAPPS}\\${APP_NAME}.war" (
+                        del /f "${TOMCAT_WEBAPPS}\\${APP_NAME}.war"
+                    )
+                    copy "${WAR_FILE}" "${TOMCAT_WEBAPPS}\\${APP_NAME}.war"
+                """
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                bat 'curl -s -o nul -w "%%{http_code}" http://localhost:8085/springjsp/'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'PIPELINE SUCCESS! App deployed successfully.'
+        }
+        failure {
+            echo 'PIPELINE FAILED! Check logs.'
+        }
+        always {
+            cleanWs()
         }
     }
 }

@@ -2,24 +2,36 @@ pipeline {
     agent any
 
     stages {
-
-        stage('Clone Repo') {
+        stage('Checkout Code') {
             steps {
-                git 'https://github.com/Tarrshan02/simple-servlet-demo.git'
+                git branch: 'main', url: 'https://github.com/Tarrshan02/simple-servlet-demo.git'
             }
         }
 
         stage('Build WAR') {
             steps {
-                bat 'mvn clean package'
+                bat 'mvn clean package -DskipTests'
             }
         }
 
-        stage('Deploy to Tomcat') {
+        stage('Deploy WAR') {
             steps {
-                bat 'copy target\\springjsp-0.0.1-SNAPSHOT.war C:\\Users\\APU\\eclipse-workspace\\.metadata\\.plugins\\org.eclipse.wst.server.core\\tmp0\\wtpwebapps\\'
+                bat '''
+                if exist "C:\\Tomcat10\\webapps\\simple-servlet-demo" rmdir /s /q "C:\\Tomcat10\\webapps\\simple-servlet-demo"
+                if exist "C:\\Tomcat10\\webapps\\simple-servlet-demo.war" del /f /q "C:\\Tomcat10\\webapps\\simple-servlet-demo.war"
+                copy /Y "target\\simple-servlet-demo.war" "C:\\Tomcat10\\webapps\\simple-servlet-demo.war"
+                '''
             }
         }
 
+        stage('Restart Tomcat') {
+            steps {
+                bat '''
+                net stop Tomcat10
+                timeout /t 5 /nobreak
+                net start Tomcat10
+                '''
+            }
+        }
     }
 }
